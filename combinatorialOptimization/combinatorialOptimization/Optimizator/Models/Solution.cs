@@ -2,11 +2,14 @@
 {
     public class Solution
     {
-        public Solution(int workerCount)
+        private Dictionary<int, int> _workers = new Dictionary<int, int>(); //worker Index, worker Max Working Hours
+
+        public Solution(Dictionary<int, int> workers)
         {
-            for (int workerIndex = 0; workerIndex < workerCount; workerIndex++)
+            for (int workerIndex = 0; workerIndex < workers.Count; workerIndex++)
             {
-                WorkerVisits.Add(new WorkerVisit(workerIndex));
+                _workers.Add(workerIndex, workers[workerIndex]);
+                WorkerVisits.Add(workerIndex, new List<VisitTime>());
             }
         }
 
@@ -14,19 +17,18 @@
         {
         }
 
-        public List<WorkerVisit> WorkerVisits { get; set; } = new List<WorkerVisit>();
+        public Dictionary<int, List<VisitTime>> WorkerVisits { get; set; } = new Dictionary<int, List<VisitTime>>();
 
         public int GetCost()
         {
             var totalCost = 0;
-            var workerVisits = WorkerVisits.ToDictionary(x => x.GetWorkerNumber(), x => x.Visits);
 
-            foreach (var workerNumber in workerVisits.Keys)
+            foreach (var workerNumber in WorkerVisits.Keys)
             {
                 //check whether times are intersecting
                 var visitedVisits = new HashSet<VisitTime>();
 
-                foreach (var visit in workerVisits[workerNumber])
+                foreach (var visit in WorkerVisits[workerNumber])
                 {
                     var intersectingCount = visitedVisits.Where(v => IsIntersectingVisits(v, visit)).Count();
                     if (intersectingCount > 0)
@@ -36,6 +38,14 @@
 
                     visitedVisits.Add(visit);
                 }
+
+                var totalHoursSpent = WorkerVisits[workerNumber].Sum(visit => (visit.To - visit.From).TotalHours);
+
+                // ja tiek pārsniegta slodze stundās - palielināt cost
+                if (totalHoursSpent > _workers[workerNumber])
+                {
+                    totalCost++;
+                }
             }
 
             return totalCost;
@@ -43,31 +53,45 @@
 
         public Solution Copy()
         {
-            var newWorkerVisits = new List<WorkerVisit>();
+            var newSolution = new Solution(_workers);
+            var newWorkerVisits = new Dictionary<int, List<VisitTime>>();
 
-            foreach (var workerVisit in WorkerVisits)
+            foreach (var workerIndex in WorkerVisits.Keys)
             {
-                var newWorkerVisit = workerVisit.Copy();
-                newWorkerVisit.SetWorkerNumber(workerVisit.GetWorkerNumber());
-                newWorkerVisits.Add(newWorkerVisit);
+                // Copy visits
+                var newVisits = new List<VisitTime>();
+                foreach (var visitTime in WorkerVisits[workerIndex])
+                {
+                    newVisits.Add(new VisitTime(visitTime.Index, visitTime.From, visitTime.To));
+                }
+
+                newWorkerVisits.Add(workerIndex, newVisits);
             }
 
-            return new Solution
-            {
-                WorkerVisits = newWorkerVisits
-            };
+            newSolution.WorkerVisits = newWorkerVisits;
+            return newSolution;
         }
 
         private bool IsIntersectingVisits(VisitTime visit1, VisitTime visit2)
         {
             return visit1.From <= visit2.To && visit1.To >= visit2.From;
         }
-        
+
         public void PrintSolution()
         {
             foreach (var workerVisits in WorkerVisits)
             {
-                workerVisits.PrintWorkerVisit();
+                Console.WriteLine($"Worker {workerVisits.Key + 1} (max hours {_workers[workerVisits.Key]}) has following visits:");
+
+                foreach (var visit in workerVisits.Value.OrderBy(x => x.From))
+                {
+                    Console.Write($"From {visit.From} to {visit.To}");
+                    if (workerVisits.Value.Any(x => x != visit && IsIntersectingVisits(x, visit)))
+                    {
+                        Console.Write(" - intersecting");
+                    }
+                    Console.WriteLine();
+                }
             }
 
             Console.WriteLine($"Cost: {GetCost()}");

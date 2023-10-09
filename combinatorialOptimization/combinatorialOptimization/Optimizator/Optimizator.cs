@@ -6,28 +6,31 @@ namespace CombinatorialOptimization.Optimizator
     public class Optimizator
     {
         private readonly List<VisitTime> _visitTimes;
-        private readonly int _workerCount;
+        private Dictionary<int, int> _workers = new Dictionary<int, int>();
 
         private readonly double _temperature = 100000;
-        private readonly double _coolingRate = 10;
-        private readonly int _maxIterations = 1000;
+        private readonly double _coolingRate = 50;
+        private readonly int _maxIterations = 10000;
 
-        public Optimizator(List<VisitTime> visits, int workerCount)
+        public Optimizator(List<VisitTime> visits, Dictionary<int, int> workers)
         {
             _visitTimes = visits;
-            if (workerCount <= 1)
+            if (workers.Count <= 1)
             {
                 throw new Exception("Worker count must be more then 1.");
             }
 
-            _workerCount = workerCount;
+            foreach (var worker in workers)
+            {
+                _workers.Add(worker.Key, worker.Value);
+            }
         }
 
         /* Initialize first solution using First Fit algorithm. */
         public Solution GenerateInitialSolution()
         {
             var finalCost = 0;
-            var firstFit = new Solution(_workerCount);
+            var firstFit = new Solution(_workers);
 
             foreach (var visit in _visitTimes)
             {
@@ -35,7 +38,6 @@ namespace CombinatorialOptimization.Optimizator
                 int? bestVisitorIndex = null;
 
                 var workersTimes = firstFit.WorkerVisits
-                    .Select(x => new KeyValuePair<int, List<VisitTime>>(x.GetWorkerNumber(), x.Visits))
                     .OrderBy(x => Guid.NewGuid());
 
                 foreach (var workerTimes in workersTimes)
@@ -58,8 +60,8 @@ namespace CombinatorialOptimization.Optimizator
                 }
 
                 finalCost = workerBestCost;
-                firstFit.WorkerVisits
-                    .FirstOrDefault(x => x.GetWorkerNumber() == bestVisitorIndex)?
+                if (bestVisitorIndex != null)
+                    firstFit.WorkerVisits[bestVisitorIndex.Value]
                     .Add(visit);
             }
 
@@ -67,9 +69,8 @@ namespace CombinatorialOptimization.Optimizator
         }
 
         /* Implemented Simulated Annealing algorithm. */
-        public Solution SimulatedAnnealing()
+        public Solution SimulatedAnnealing(Solution initialSolution)
         {
-            var initialSolution = GenerateInitialSolution();
             var currentSolution = initialSolution.Copy();
             var bestSolution = initialSolution.Copy();
             var temperature = _temperature;
@@ -100,21 +101,21 @@ namespace CombinatorialOptimization.Optimizator
         {
             var newSolution = solution.Copy();
 
+            // Remove random visit
             var random = new Random();
             var randomVisit = _visitTimes[random.Next(_visitTimes.Count)];
+            var workerWithVisits = newSolution.WorkerVisits
+                .Where(kv => kv.Value.Any(visit => visit.Index == randomVisit.Index))
+                .FirstOrDefault();
+            var itemToRemove = workerWithVisits.Value.Find(x => x.Index == randomVisit.Index);
+            if (itemToRemove != null)
+                newSolution.WorkerVisits[workerWithVisits.Key].Remove(itemToRemove);
 
-            // Remove visit
-            var worker = newSolution.WorkerVisits
-                .FirstOrDefault(x => x.HasVisit(randomVisit.Index));
-
-            if (worker != null)
-                worker.Remove(randomVisit.Index);
-
-            // Add visit to other worker 
-            newSolution.WorkerVisits
-                .Where(x => x.GetWorkerNumber() != worker?.GetWorkerNumber())
+            // Add this visit to other worker
+            newSolution.WorkerVisits.Where(x => x.Key != workerWithVisits.Key)
                 .OrderBy(x => Guid.NewGuid())
-                .First()
+                .FirstOrDefault()
+                .Value
                 .Add(randomVisit);
 
             return newSolution;
